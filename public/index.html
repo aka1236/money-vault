@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Money Vault Admin</title>
+<style>
+:root{--bg:#03131d;--panel:#091d29;--line:#153b4a;--a:#19c6b8;--text:#e8f1f5;--muted:#91a7b3;--danger:#ff8091}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 50% 0,#0b3140 0,#03131d 38%,#021018 100%);color:var(--text);font-family:Arial,Helvetica,sans-serif;min-height:100vh}
+header{height:78px;background:#061821;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 18px;gap:12px;position:sticky;top:0;z-index:5}
+.logo{width:48px;height:48px;border-radius:16px;background:var(--a);color:#04221f;display:grid;place-items:center;font-weight:900;font-size:19px}
+header h1{font-size:21px;margin:0}header small{color:var(--muted)}.admin{margin-left:auto;color:var(--a);font-size:13px}
+main{max-width:1000px;margin:auto;padding:14px}.login,.card{background:linear-gradient(145deg,#0b2230,#081b27);border:1px solid var(--line);border-radius:22px;padding:18px;margin-bottom:12px;box-shadow:0 10px 30px #0003}
+.login{max-width:480px;margin:60px auto}.login h2{margin-top:0}.field{width:100%;background:#061a25;border:1px solid #194355;color:var(--text);border-radius:14px;padding:14px;font-size:16px;outline:none;margin:7px 0 12px}
+button{border:0;border-radius:14px;background:var(--a);color:#04221f;font-weight:900;padding:13px 17px;cursor:pointer}.danger{background:#ff8091}.muted{color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.stat{background:#081a26;border:1px solid var(--line);border-radius:18px;padding:14px}.stat b{display:block;font-size:24px;margin-top:6px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.row{display:flex;gap:8px;align-items:center}.row>*:first-child{flex:1}
+.tablewrap{overflow:auto}.table{width:100%;border-collapse:collapse;min-width:650px}.table th,.table td{padding:11px 8px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}.table th{color:var(--a)}
+.badge{display:inline-block;padding:5px 9px;border-radius:10px;background:#0d2a37;color:var(--a);font-size:12px}.badge.approved{color:#58e6a8}.badge.rejected{color:#ff8091}.badge.pending{color:#ffd166}
+.notice{padding:12px;border:1px solid #1b4a59;background:#0d2a37;border-radius:14px;margin:10px 0}
+@media(max-width:650px){.stats{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.admin{font-size:11px}}
+</style>
+<style>
+.topnav{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:16px 0;padding:10px;border:1px solid #1b4a59;background:#0d2a37;border-radius:14px;position:sticky;top:0;z-index:5}
+.topnav a{color:#fff;text-decoration:none;padding:8px 12px;border-radius:10px;background:#123d4b;font-size:13px;white-space:nowrap}
+.topnav a:hover{background:#18566a}
+.topnav a.active{background:#19c6b8;color:#061821;font-weight:800}
+.navbadge{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;margin-left:5px;border-radius:999px;background:#ff334f;color:#fff;font-size:10px;font-weight:900;line-height:18px;box-shadow:0 0 0 2px #061821}.navbadge.pulse{animation:navpulse 1.2s infinite}@keyframes navpulse{50%{transform:scale(1.15);box-shadow:0 0 0 2px #061821,0 0 12px #ff334f}}
+.admin-section-hidden{display:none!important}
+@media(max-width:650px){.topnav{overflow-x:auto;flex-wrap:nowrap}.topnav a{flex:0 0 auto}}
+</style></head>
+<body>
+<div id="app"></div>
+<script>
+const ADMIN_EMAIL='moneyfarmingup@gmail.com';
+const ADMIN_KEY='money_vault_admin_v1';
+const USER_KEY='money_vault_full_v1';
+
+function esc(x){return String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+function getUser(){try{return JSON.parse(localStorage.getItem(USER_KEY)||'null')}catch(e){return null}}
+function logged(){return sessionStorage.getItem(ADMIN_KEY)==='1'}
+function login(){
+ const e=document.getElementById('email').value.trim().toLowerCase();
+ const p=document.getElementById('pass').value;
+ if(e!==ADMIN_EMAIL || p!==''){alert('Enter the admin email. For this local demo, the password is not validated.');return}
+ sessionStorage.setItem(ADMIN_KEY,'1');render()
+}
+function logout(){sessionStorage.removeItem(ADMIN_KEY);render()}
+function data(){
+ const u=getUser()||{};
+ return {u,requests:u.requests||[],messages:u.messages||[],history:u.history||[]}
+}
+function users(){
+ const root=getUser(); if(!root)return [];
+ if(Array.isArray(root.users)) return root.users;
+ if(root.user) return [{...root.user,id:root.user.id||'current',balance:Number(root.balance??1),signupBonus:Number(root.signupBonus||0),status:'Active'}];
+ return [];
+}
+function saveUserBalance(id){
+ const root=getUser(); if(!root)return;
+ const input=document.getElementById('bal_'+id); const value=Number(input?.value);
+ if(!Number.isFinite(value)||value<0){alert('Enter a valid Main Balance.');return;}
+ if(Array.isArray(root.users)){
+   const u=root.users.find(x=>String(x.id)===String(id)); if(!u)return;
+   u.balance=value;
+ }else if(root.user && String(root.user.id||'current')===String(id)) root.balance=value;
+ saveUser(root); alert('Main Balance saved for this user.'); render();
+}
+
+function saveUser(u){localStorage.setItem(USER_KEY,JSON.stringify(u))}
+function users(){
+ const root=getUser(); if(!root)return [];
+ if(Array.isArray(root.users)) return root.users;
+ if(root.user) return [{...root.user,id:root.user.id||'current',balance:Number(root.balance??1),signupBonus:Number(root.signupBonus||0),status:'Active',bonusStatus:root.bonusStatus||'pending'}];
+ return [];
+}
+function saveRoot(root){localStorage.setItem(USER_KEY,JSON.stringify(root))}
+function saveUserBalance(id){
+ const root=getUser(); if(!root)return;
+ const input=document.getElementById('bal_'+id); const value=Number(input?.value);
+ if(!Number.isFinite(value)||value<0){alert('Enter a valid Main Balance.');return;}
+ if(Array.isArray(root.users)){
+   const u=root.users.find(x=>String(x.id)===String(id)); if(!u)return;
+   u.balance=value;
+ }else if(root.user && String(root.user.id||'current')===String(id)) root.balance=value;
+ saveRoot(root); alert('Main Balance saved for this user.'); render();
+}
+function setBonusStatus(id,status){
+ const root=getUser(); if(!root)return;
+ if(Array.isArray(root.users)){
+   const u=root.users.find(x=>String(x.id)===String(id)); if(!u)return;
+   u.bonusStatus=status;
+   u.bonusApproved=status==='approved';
+ }else if(root.user && String(root.user.id||'current')===String(id)){
+   root.bonusStatus=status; root.bonusApproved=status==='approved';
+ }
+ saveRoot(root); render();
+}
+function resetPassword(id){
+ const root=getUser(); if(!root)return;
+ const newPass=prompt('Enter a new password for this user:');
+ if(newPass===null)return;
+ if(newPass.length<6){alert('Password must be at least 6 characters.');return;}
+ if(Array.isArray(root.users)){
+   const u=root.users.find(x=>String(x.id)===String(id)); if(!u)return;
+   u.password=newPass;
+ }else if(root.user && String(root.user.id||'current')===String(id)){
+   root.user.password=newPass;
+ }
+ saveRoot(root); alert('Password reset successfully.'); render();
+}
+function deleteAccount(id){
+ const root=getUser(); if(!root)return;
+ if(!confirm('Delete this account permanently from this browser data?')) return;
+ if(Array.isArray(root.users)){
+   root.users=root.users.filter(x=>String(x.id)!==String(id));
+   saveRoot(root);
+ }else if(root.user && String(root.user.id||'current')===String(id)){
+   localStorage.removeItem(USER_KEY);
+ }
+ alert('Account deleted.'); render();
+}
+function saveSocialLinks(){
+ const root=getUser()||{};
+ root.socialLinks={
+   telegram:document.getElementById('telegram').value.trim(),
+   instagram:document.getElementById('instagram').value.trim(),
+   facebook:document.getElementById('facebook').value.trim()
+ };
+ saveRoot(root); alert('Social links saved.'); render();
+}
+function setAddresses(){
+ const u=getUser(); if(!u)return;
+ u.upi=document.getElementById('upi').value.trim();
+ u.bep20=document.getElementById('bep20').value.trim();
+ saveRoot(u); alert('UPI and BEP-20 addresses updated.'); render();
+}
+function bonusBadge(s){
+ const v=String(s||'pending').toLowerCase();
+ const label=v==='approved'?'Approved':v==='rejected'?'Rejected':'Pending';
+ return `<span class="badge ${v}">${label}</span>`;
+}
+function dashboard(){
+ const d=data(),u=d.u||{}, list=users();
+ const pending=list.filter(x=>String(x.bonusStatus||'pending').toLowerCase()==='pending').length;
+ const social=u.socialLinks||{};
+ return `
+ <section class="card" id="users"><h2>All Users</h2>
+ <p class="muted">View registration and device information. Approve or reject the signup bonus, change Main Balance, or delete an account.</p>
+ <div class="tablewrap"><table class="table">
+ <tr><th>#</th><th>Name</th><th>Email</th><th>Mobile</th><th>Device</th><th>Same Device</th><th>Main Balance</th><th>Bonus</th><th>Status</th><th>Actions</th></tr>
+ ${list.map((x,i)=>{
+   const device=x.deviceKey||x.deviceId||'Not recorded';
+   const same=x.duplicateDevice===true?'Duplicate':'';
+   return `<tr>
+    <td>${i+1}</td><td>${esc(x.name)}</td><td>${esc(x.email)}</td><td>${esc(x.mobile||'')}</td>
+    <td>${esc(device)}</td><td>${esc(same)}</td>
+    <td><input id="bal_${esc(x.id)}" class="field" style="min-width:120px;margin:0" type="number" min="0" step="0.00000001" value="${Number(x.balance??x.mainBalance??1)}"></td>
+    <td>${bonusBadge(x.bonusStatus)}</td>
+    <td><span class="badge">${esc(x.status||'Active')}</span></td>
+    <td>
+      <button onclick="saveUserBalance('${esc(x.id)}')">Save Balance</button>
+      <button onclick="setBonusStatus('${esc(x.id)}','approved')">Approve Bonus</button>
+      <button class="danger" onclick="setBonusStatus('${esc(x.id)}','rejected')">Reject Bonus</button>
+      <button onclick="resetPassword('${esc(x.id)}')">Reset Password</button>
+      <button class="danger" onclick="deleteAccount('${esc(x.id)}')">Delete</button>
+    </td>
+   </tr>`
+ }).join('')||'<tr><td colspan="10">No registered users yet.</td></tr>'}
+ </table></div></section>
+
+ <section class="card" id="payments"><h2>Payment Addresses</h2>
+ <p class="muted">Shared settings for all users.</p>
+ <label>UPI Address</label><input id="upi" class="field" value="${esc(u.upi||'moneyvault@upi')}">
+ <label>BEP-20 Address</label><input id="bep20" class="field" value="${esc(u.bep20||'0xDEMO-BEP20-ADDRESS')}">
+ <button onclick="setAddresses()">Save Addresses</button>
+ </section>
+
+ <section class="card" id="social"><h2>Social Links</h2>
+ <p class="muted">Set the links shown on the public site. Leave blank to hide a link.</p>
+ <label>Telegram</label><input id="telegram" class="field" placeholder="https://t.me/..." value="${esc(social.telegram||'')}">
+ <label>Instagram</label><input id="instagram" class="field" placeholder="https://instagram.com/..." value="${esc(social.instagram||'')}">
+ <label>Facebook</label><input id="facebook" class="field" placeholder="https://facebook.com/..." value="${esc(social.facebook||'')}">
+ <button onclick="saveSocialLinks()">Save Social Links</button>
+ </section>
+
+ <section class="card" id="withdrawals"><h2>Withdrawal Requests <span id="withdrawalSectionBadge"></span></h2>
+ ${d.requests.length?`<div class="tablewrap"><table class="table"><tr><th>Amount</th><th>Address</th><th>Status</th><th>Date</th></tr>
+ ${d.requests.map(r=>`<tr><td>$ ${Number(r.amount||0).toFixed(2)}</td><td>${esc(r.to)}</td><td>${esc(r.status)}</td><td>${new Date(r.date).toLocaleString()}</td></tr>`).join('')}
+ </table></div>`:'<p class="muted">No withdrawal requests.</p>'}</section>
+
+ <section class="card" id="support"><h2>Support Messages <span id="supportSectionBadge"></span></h2>
+ ${d.messages.length?d.messages.map(m=>`<div class="notice"><b>${esc(m.text)}</b><br><small class="muted">${new Date(m.date).toLocaleString()}</small></div>`).join(''):'<p class="muted">No support messages.</p>'}</section>
+
+ <div style="text-align:right;margin:18px 0"><button class="danger" onclick="logout()">Log Out</button></div>
+ `
+}
+function updateNavBadges(){
+ const d=data(), u=d.u||{};
+ const reqs=d.requests||[], msgs=d.messages||[];
+ const pending=reqs.filter(r=>String(r.status||'pending').toLowerCase()==='pending').length;
+ const unread=msgs.filter(m=>!m.read && !m.readAt).length;
+ const set=(id,n)=>{const el=document.getElementById(id); if(!el)return; el.innerHTML=n?`<span class="navbadge pulse">${n>99?'99+':n}</span>`:''};
+ set('withdrawalsBadge',pending); set('supportBadge',unread);
+ const wb=document.getElementById('withdrawalSectionBadge'); if(wb) wb.innerHTML=pending?`<span class=\"navbadge pulse\">${pending>99?'99+':pending}</span>`:'';
+ const sb=document.getElementById('supportSectionBadge'); if(sb) sb.innerHTML=unread?`<span class=\"navbadge pulse\">${unread>99?'99+':unread}</span>`:'';
+ set('usersBadge',users().length?users().filter(x=>String(x.status||'Active').toLowerCase()==='pending').length:0);
+ set('paymentsBadge',0); set('socialBadge',0);
+}
+function render(){
+ if(!logged()){document.getElementById('app').innerHTML=`<main class="login"><div class="logo">MV</div><h2>Money Vault Admin</h2><p class="muted">Private admin panel</p><label>Email</label><input id="email" class="field" type="email" value="${ADMIN_EMAIL}"><label>Password</label><input id="pass" class="field" type="password" placeholder="Admin password"><button onclick="login()">Open Admin Panel</button></main>`;return}
+ document.getElementById('app').innerHTML=`<header><div class="logo">MV</div><div><h1>Money Vault Admin</h1><small>Private dashboard</small></div><div class="admin">${ADMIN_EMAIL}</div></header><main><nav class="topnav">
+ <a href="#users" data-section="users">Users<span id="usersBadge"></span></a>
+ <a href="#payments" data-section="payments">Payments<span id="paymentsBadge"></span></a>
+ <a href="#social" data-section="social">Social Links<span id="socialBadge"></span></a>
+ <a href="#withdrawals" data-section="withdrawals">Withdrawals<span id="withdrawalsBadge"></span></a>
+ <a href="#support" data-section="support">Support<span id="supportBadge"></span></a>
+</nav>${dashboard()}</main>`
+ const sections=['users','payments','social','withdrawals','support'];
+ function showSection(id){
+   id=sections.includes(id)?id:'users';
+   sections.forEach(x=>{const el=document.getElementById(x); if(el) el.classList.toggle('admin-section-hidden',x!==id)});
+   document.querySelectorAll('.topnav a').forEach(a=>a.classList.toggle('active',a.dataset.section===id));
+ }
+ document.querySelectorAll('.topnav a').forEach(a=>a.addEventListener('click',()=>setTimeout(()=>showSection(location.hash.slice(1)),0)));
+ showSection(location.hash.slice(1));
+ updateNavBadges();
+}
+render()
+</script>
+</body>
+</html>
